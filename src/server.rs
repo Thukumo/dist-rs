@@ -1,4 +1,3 @@
-use std::net::UdpSocket;
 use std::io::{Write, Read,};
 use std::net::{SocketAddr, TcpListener, TcpStream,};
 use std::sync::{Arc, Mutex,};
@@ -8,7 +7,7 @@ use std::mem::size_of;
 pub type SizeType = u64;
 #[allow(dead_code)]
 pub struct Server {
-    local_addr: SocketAddr,
+    port: u16,
     listener_thread: Option<thread::JoinHandle<Arc<Vec<Mutex<TcpStream>>>>>,
     num_workers: SizeType,
 }
@@ -19,12 +18,7 @@ impl Server {
             panic!("Error: num_workers must be greater than 0");
         }
         let listener = TcpListener::bind(addr).expect("Failed to bind to address");
-        let mut local_addr = listener.local_addr().unwrap();
-        local_addr.set_ip({
-            let socket = UdpSocket::bind("0.0.0.0:0").unwrap();
-            socket.connect("8.8.8.8:80").unwrap();
-            socket.local_addr().unwrap().ip()
-        });
+        let port = listener.local_addr().unwrap().port();
         let listener_thread = Some(thread::spawn(move || {
             let mut streams = Vec::new();
             let mut counter: SizeType = 0;
@@ -44,7 +38,7 @@ impl Server {
             }
             Arc::new(streams)
         }));
-        Self { local_addr, listener_thread, num_workers }
+        Self { port, listener_thread, num_workers }
     }
     pub fn run(&mut self) {
         let mut clients = Vec::new();
@@ -91,7 +85,7 @@ impl Server {
             println!("Worker {} sent {} bytes to worker {}", rank, description[1], description[0]);
         }
     }
-    pub fn get_local_addr(&self) -> SocketAddr {
-        self.local_addr
+    pub fn get_port_num(&self) -> u16 {
+        self.port
     }
 }
