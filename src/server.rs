@@ -13,33 +13,6 @@ pub struct Server {
 }
 #[allow(dead_code)]
 impl Server {
-    pub fn new(addr: SocketAddr, num_workers: SizeType) -> Self {
-        if num_workers == 0 {
-            panic!("Error: num_workers must be greater than 0");
-        }
-        let listener = TcpListener::bind(addr).expect("Failed to bind to address");
-        let port = listener.local_addr().unwrap().port();
-        let listener_thread = Some(thread::spawn(move || {
-            let mut streams = Vec::new();
-            let mut counter: SizeType = 0;
-            for stream in listener.incoming() {
-                match stream {
-                    Ok(stream) => {
-                        streams.push(Mutex::new(stream));
-                        counter += 1;
-                        if num_workers == counter {
-                            println!("All workers are connected.");
-                            break;
-                        }
-                    }
-                    Err(_) => {
-                    }
-                }
-            }
-            Arc::new(streams)
-        }));
-        Self { port, listener_thread, num_workers }
-    }
     pub fn run(&mut self) {
         let mut clients = Vec::new();
         let streams = self.listener_thread.take().unwrap().join().unwrap();
@@ -88,4 +61,31 @@ impl Server {
     pub fn get_port_num(&self) -> u16 {
         self.port
     }
+}
+pub fn new(addr: SocketAddr, num_workers: SizeType) -> Server {
+    if num_workers == 0 {
+        panic!("Error: num_workers must be greater than 0");
+    }
+    let listener = TcpListener::bind(addr).expect("Failed to bind to address");
+    let port = listener.local_addr().unwrap().port();
+    let listener_thread = Some(thread::spawn(move || {
+        let mut streams = Vec::new();
+        let mut counter: SizeType = 0;
+        for stream in listener.incoming() {
+            match stream {
+                Ok(stream) => {
+                    streams.push(Mutex::new(stream));
+                    counter += 1;
+                    if num_workers == counter {
+                        println!("All workers are connected.");
+                        break;
+                    }
+                }
+                Err(_) => {
+                }
+            }
+        }
+        Arc::new(streams)
+    }));
+    Server { port, listener_thread, num_workers }
 }
