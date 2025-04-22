@@ -4,7 +4,8 @@ use std::sync::{Arc, Mutex,};
 use std::thread;
 use std::mem::size_of;
 
-pub type SizeType = u64;
+use crate::SizeType;
+
 #[allow(dead_code)]
 pub struct Server {
     port: u16,

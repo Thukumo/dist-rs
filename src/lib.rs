@@ -4,3 +4,5 @@ pub mod client;
 use server::*;
 #[allow(unused_imports)]
 use client::*;
+
+pub type SizeType = u32;
