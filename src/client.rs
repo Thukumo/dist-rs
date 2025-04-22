@@ -58,7 +58,7 @@ impl Client {
         let combined_data = vec![vec![0_u8], dest.to_be_bytes().to_vec(), (data.len() as DataSize).to_be_bytes().to_vec(), data.to_vec()].concat();
         self.stream_write.lock().unwrap().write_all(&combined_data).expect("Unable to write to stream");
     }
-    pub fn recieve_async(&mut self) -> JoinHandle<(WorkerSize, Vec<u8>)> { // Updated return type to (WorkerSize, Vec<u8>)
+    pub fn recv_async(&mut self) -> JoinHandle<(WorkerSize, Vec<u8>)> { // Updated return type to (WorkerSize, Vec<u8>)
         let stream = self.stream_read.clone();
         thread::spawn(move || {
             let mut stream = stream.lock().unwrap();
@@ -71,7 +71,7 @@ impl Client {
             (source, buf)
         })
     }
-    pub fn recieve(&mut self) -> (WorkerSize, Vec<u8>) {
+    pub fn recv(&mut self) -> (WorkerSize, Vec<u8>) {
         let mut buf = vec![0; size_of::<WorkerSize>() + size_of::<DataSize>()];
         let mut stream = self.stream_read.lock().unwrap();
         stream.read_exact(&mut buf).expect("Unable to read from stream");
