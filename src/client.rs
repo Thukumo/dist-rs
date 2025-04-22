@@ -5,14 +5,15 @@ use std::sync::{Arc, Mutex,};
 use std::time::Duration;
 use std::mem::size_of;
 
-use crate::SizeType;
+use crate::WorkerSize;
+use crate::DataSize;
 
 #[allow(dead_code)]
 pub struct Client {
     stream_read: Arc<Mutex<TcpStream>>,
     stream_write: Arc<Mutex<TcpStream>>,
-    rank: SizeType,
-    workers_num: SizeType,
+    rank: WorkerSize,
+    workers_num: WorkerSize,
 }
 
 #[allow(dead_code)]
@@ -29,60 +30,56 @@ impl Client {
                 let _ = stream.lock().unwrap().write_all(&buf);
             }
         });
-        let mut buf = [0; size_of::<SizeType>() * 2];
+        let mut buf = [0; size_of::<WorkerSize>() * 2];
+        // ランク・ワーカー数を取得
         if stream_read.lock().unwrap().read_exact(&mut buf).is_err() {
             return None;
         }
 
-        let v = buf.chunks(size_of::<SizeType>()).map(|x| SizeType::from_be_bytes(x.try_into().unwrap())).collect::<Vec<_>>();
+        let v = buf.chunks(size_of::<WorkerSize>()).map(|x| WorkerSize::from_be_bytes(x.try_into().unwrap())).collect::<Vec<_>>();
         Some(Self { stream_read, stream_write, rank: v[0], workers_num: v[1], })
     }
-    pub fn get_rank(&self) -> SizeType {
+    pub fn get_rank(&self) -> WorkerSize {
         self.rank
     }
-    pub fn get_workers_num(&self) -> SizeType {
+    pub fn get_workers_num(&self) -> WorkerSize {
         self.workers_num
     }
-    pub fn send_to_async(&mut self, dest: SizeType, data: &[u8]) -> JoinHandle<()> {
-        let data_cloned = data.to_vec(); // Clone the data to ensure ownership
-        let mut data = vec![0_u8];
-        data.extend(dest.to_be_bytes());
-        data.extend(data_cloned.len().to_be_bytes());
-        data.extend(data_cloned);
+    pub fn send_to_async(&mut self, dest: WorkerSize, data: &[u8]) -> JoinHandle<()> {
+        // 送信先・データサイズ・データ
+        let combined_data = vec![vec![0_u8], dest.to_be_bytes().to_vec(), (data.len() as DataSize).to_be_bytes().to_vec(), data.to_vec()].concat();
         let stream = self.stream_write.clone();
         thread::spawn(move || {
-            stream.lock().unwrap().write_all(&data).expect("Unable to write to stream");
+            stream.lock().unwrap().write_all(&combined_data).expect("Unable to write to stream");
         })
     }
-    pub fn send_to(&mut self, dest: SizeType, data: &[u8]) {
-        let mut combined_data = vec![0_u8];
-        combined_data.extend(dest.to_be_bytes());
-        combined_data.extend(data.len().to_be_bytes());
-        combined_data.extend(data);
+    pub fn send_to(&mut self, dest: WorkerSize, data: &[u8]) {
+        // 送信先・データサイズ・データ
+        let combined_data = vec![vec![0_u8], dest.to_be_bytes().to_vec(), (data.len() as DataSize).to_be_bytes().to_vec(), data.to_vec()].concat();
         self.stream_write.lock().unwrap().write_all(&combined_data).expect("Unable to write to stream");
     }
-    pub fn recieve_async(&mut self) -> JoinHandle<(SizeType, Vec<u8>)> {
+    pub fn recieve_async(&mut self) -> JoinHandle<(WorkerSize, Vec<u8>)> { // Updated return type to (WorkerSize, Vec<u8>)
         let stream = self.stream_read.clone();
         thread::spawn(move || {
             let mut stream = stream.lock().unwrap();
-            let mut buf = vec![0; size_of::<SizeType>() * 2];
+            let mut buf = vec![0; size_of::<WorkerSize>() + size_of::<DataSize>()];
             stream.read_exact(&mut buf).expect("Unable to read from stream");
-            let v = buf.chunks(size_of::<SizeType>()).map(|x| SizeType::from_be_bytes(x.try_into().unwrap())).collect::<Vec<_>>();
-            let from = v[0];
-            let mut buf = vec![0; v[1] as usize];
+            let source = WorkerSize::from_be_bytes(buf[..size_of::<WorkerSize>()].try_into().unwrap());
+            let data_size = DataSize::from_be_bytes(buf[size_of::<WorkerSize>()..].try_into().unwrap());
+            let mut buf = vec![0; data_size as usize];
             stream.read_exact(&mut buf).expect("Unable to read from stream");
-            (from, buf)
+            (source, buf)
         })
     }
-    pub fn recieve(&mut self) -> (SizeType, Vec<u8>) {
-        let mut buf = vec![0; size_of::<SizeType>() * 2];
+    pub fn recieve(&mut self) -> (WorkerSize, Vec<u8>) {
+        let mut buf = vec![0; size_of::<WorkerSize>() + size_of::<DataSize>()];
         let mut stream = self.stream_read.lock().unwrap();
         stream.read_exact(&mut buf).expect("Unable to read from stream");
-        let v = buf.chunks(size_of::<SizeType>()).map(|x| SizeType::from_be_bytes(x.try_into().unwrap())).collect::<Vec<_>>();
-        let from = v[0];
-        let mut buf = vec![0; v[1] as usize];
+        let source = WorkerSize::from_be_bytes(buf[..size_of::<WorkerSize>()].try_into().unwrap());
+        let data_size = DataSize::from_be_bytes(buf[size_of::<WorkerSize>()..].try_into().unwrap());
+        let mut buf = vec![0; data_size as usize];
         stream.read_exact(&mut buf).expect("Unable to read from stream");
-        (from, buf)
+        (source, buf)
     }
 }
 #[allow(dead_code)]

@@ -4,13 +4,14 @@ use std::sync::{Arc, Mutex,};
 use std::thread;
 use std::mem::size_of;
 
-use crate::SizeType;
+use crate::WorkerSize;
+use crate::DataSize;
 
 #[allow(dead_code)]
 pub struct Server {
     port: u16,
     listener_thread: Option<thread::JoinHandle<Arc<Vec<Mutex<TcpStream>>>>>,
-    num_workers: SizeType,
+    num_workers: WorkerSize,
 }
 #[allow(dead_code)]
 impl Server {
@@ -32,7 +33,7 @@ impl Server {
         println!("Server shutting down.");
     }
 
-    fn handle_client(rank: SizeType, num_workers: SizeType, clients: Arc<Vec<Mutex<TcpStream>>>) {
+    fn handle_client(rank: WorkerSize, num_workers: WorkerSize, clients: Arc<Vec<Mutex<TcpStream>>>) {
         let mut reader_stream = {
             let mut stream = clients[rank as usize].lock().unwrap();
             stream.write_all(&[rank.to_be_bytes(), num_workers.to_be_bytes()].concat()).unwrap();
@@ -48,22 +49,23 @@ impl Server {
             if buf[0] == 255 { // ping
                 continue;
             }
-            let mut buf = vec![0; size_of::<SizeType>() * 2];
+            let mut buf = vec![0; size_of::<WorkerSize>() + size_of::<DataSize>()];
             reader_stream.read_exact(&mut buf).unwrap();
-            let description = buf.chunks(size_of::<SizeType>())
-                .map(|x| SizeType::from_be_bytes(x.try_into().unwrap())).collect::<Vec<_>>();
-            let mut data = vec![0; description[1] as usize];
+            let dest = WorkerSize::from_be_bytes(buf[..size_of::<WorkerSize>()].try_into().unwrap());
+            let data_size = DataSize::from_be_bytes(buf[size_of::<WorkerSize>()..].try_into().unwrap());
+
+            let mut data = vec![0; data_size as usize];
             reader_stream.read_exact(&mut data).unwrap();
-            let combined_data = [[rank_bytes, description[1].to_be_bytes()].concat().to_vec(), data].concat();
-            clients[description[0] as usize].lock().unwrap().write_all(&combined_data).unwrap();
-            println!("Worker {} sent {} bytes to worker {}", rank, description[1], description[0]);
+            let combined_data = [[rank_bytes, buf[size_of::<WorkerSize>()..].try_into().unwrap()].concat().to_vec(), data].concat();
+            clients[dest as usize].lock().unwrap().write_all(&combined_data).unwrap();
+            println!("Worker {} sent {} bytes to worker {}", rank, data_size, dest);
         }
     }
     pub fn get_port_num(&self) -> u16 {
         self.port
     }
 }
-pub fn new(addr: SocketAddr, num_workers: SizeType) -> Server {
+pub fn new(addr: SocketAddr, num_workers: WorkerSize) -> Server {
     if num_workers == 0 {
         panic!("Error: num_workers must be greater than 0");
     }
@@ -71,7 +73,7 @@ pub fn new(addr: SocketAddr, num_workers: SizeType) -> Server {
     let port = listener.local_addr().unwrap().port();
     let listener_thread = Some(thread::spawn(move || {
         let mut streams = Vec::new();
-        let mut counter: SizeType = 0;
+        let mut counter: WorkerSize = 0;
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {

@@ -5,4 +5,5 @@ use server::*;
 #[allow(unused_imports)]
 use client::*;
 
-pub type SizeType = u32;
+pub type WorkerSize = u8;
+pub type DataSize = u32;
