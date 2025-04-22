@@ -19,7 +19,7 @@ pub struct Client {
 #[allow(dead_code)]
 impl Client {
     fn new(addr: SocketAddr, duration_ping: u64) -> Option<Self> {
-        let stream = TcpStream::connect(addr).unwrap();
+        let stream = TcpStream::connect(addr)?;
         let stream_read = Arc::new(Mutex::new(stream.try_clone().unwrap()));
         let stream_write = Arc::new(Mutex::new(stream));
         let stream = stream_write.clone();
