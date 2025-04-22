@@ -39,7 +39,7 @@ impl Server {
             stream.write_all(&[rank.to_be_bytes(), num_workers.to_be_bytes()].concat()).unwrap();
             stream.try_clone().unwrap()
         };
-        let rank_bytes = rank.to_be_bytes();
+        let rank_bytes = rank.to_be_bytes().to_vec();
         loop {
             let mut buf = vec![0];
             if reader_stream.read_exact(&mut buf).is_err() {
@@ -56,7 +56,7 @@ impl Server {
 
             let mut data = vec![0; data_size as usize];
             reader_stream.read_exact(&mut data).unwrap();
-            let combined_data = [[rank_bytes, buf[size_of::<WorkerSize>()..].try_into().unwrap()].concat().to_vec(), data].concat();
+            let combined_data = [[rank_bytes.clone(), buf[size_of::<WorkerSize>()..].to_vec()].concat().to_vec(), data].concat();
             clients[dest as usize].lock().unwrap().write_all(&combined_data).unwrap();
             println!("Worker {} sent {} bytes to worker {}", rank, data_size, dest);
         }
